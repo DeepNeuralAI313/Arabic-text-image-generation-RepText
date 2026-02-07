@@ -1,1 +1,5 @@
 .env
+# Jupyter checkpoints
+.ipynb_checkpoints/
+
+RepText/results/.ipynb_checkpoints/
