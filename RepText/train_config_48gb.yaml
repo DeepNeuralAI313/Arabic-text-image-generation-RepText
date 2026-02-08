@@ -1,0 +1,61 @@
+# RepText Arabic Training Configuration - Optimized for 48GB VRAM
+
+# Data
+data:
+  data_dir: "./arabic_training_data"
+  image_size: [1024, 1024]  # Full resolution - you have plenty of VRAM!
+  train_ratio: 0.9
+  batch_size: 8  # 2x the default - faster training!
+  num_workers: 8  # Utilize your CPU cores
+
+# Model
+model:
+  base_model: "black-forest-labs/FLUX.1-dev"
+  controlnet_config:
+    in_channels: 16
+    num_layers: 4
+    attention_head_dim: 128
+    
+# Training
+training:
+  num_epochs: 100
+  learning_rate: 1.0e-5
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_weight_decay: 1.0e-2
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  
+  # Loss weights
+  diffusion_loss_weight: 1.0
+  text_perceptual_loss_weight: 0.1
+  
+  # Learning rate schedule
+  lr_scheduler: "constant_with_warmup"
+  lr_warmup_steps: 500
+  
+  # Mixed precision - BF16 is best for your GPU
+  mixed_precision: "bf16"
+  
+  # No gradient accumulation needed with 48GB VRAM!
+  gradient_accumulation_steps: 1
+  
+  # Checkpointing - save more frequently
+  save_steps: 500   # Save every 500 steps instead of 1000
+  eval_steps: 250   # Evaluate more often
+  logging_steps: 50
+  
+# Output
+output:
+  output_dir: "./output/arabic_reptext"
+  logging_dir: "./output/arabic_reptext/logs"
+  
+# OCR Model for Text Perceptual Loss
+ocr:
+  model_name: "microsoft/trocr-base-printed"
+  use_ocr_loss: true
+  
+# Accelerate
+accelerate:
+  gradient_accumulation_steps: 1
+  mixed_precision: "bf16"
