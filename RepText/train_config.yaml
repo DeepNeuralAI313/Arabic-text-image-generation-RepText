@@ -1,0 +1,61 @@
+# RepText Arabic Training Configuration
+
+# Data
+data:
+  data_dir: "./arabic_training_data"  # Directory with prepared samples
+  image_size: [1024, 1024]  # [width, height]
+  train_ratio: 0.9
+  batch_size: 4
+  num_workers: 4
+
+# Model
+model:
+  base_model: "black-forest-labs/FLUX.1-dev"
+  controlnet_config:
+    in_channels: 16
+    num_layers: 4
+    attention_head_dim: 128
+    
+# Training
+training:
+  num_epochs: 100
+  learning_rate: 1.0e-5
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_weight_decay: 1.0e-2
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  
+  # Loss weights
+  diffusion_loss_weight: 1.0
+  text_perceptual_loss_weight: 0.1
+  
+  # Learning rate schedule
+  lr_scheduler: "constant_with_warmup"
+  lr_warmup_steps: 500
+  
+  # Mixed precision
+  mixed_precision: "bf16"  # "no", "fp16", "bf16"
+  
+  # Gradient accumulation
+  gradient_accumulation_steps: 1
+  
+  # Checkpointing
+  save_steps: 1000
+  eval_steps: 500
+  logging_steps: 50
+  
+# Output
+output:
+  output_dir: "./output/arabic_reptext"
+  logging_dir: "./output/arabic_reptext/logs"
+  
+# OCR Model for Text Perceptual Loss
+ocr:
+  model_name: "microsoft/trocr-base-printed"  # Can be replaced with Arabic-specific OCR
+  use_ocr_loss: true
+  
+# Accelerate
+accelerate:
+  gradient_accumulation_steps: 1
+  mixed_precision: "bf16"

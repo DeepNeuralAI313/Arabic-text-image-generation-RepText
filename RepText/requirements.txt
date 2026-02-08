@@ -17,3 +17,13 @@ pandas
 aiosqlite
 opencv-python-headless
 google-cloud-storage
+
+# Training dependencies
+diffusers>=0.27.0
+pillow
+pyyaml
+tqdm
+wandb
+torchvision
+datasets
+bitsandbytes  # For 8-bit optimizers (optional)
