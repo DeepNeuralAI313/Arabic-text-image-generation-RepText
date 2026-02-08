@@ -141,7 +141,9 @@ def train_one_epoch(
             
             # Encode glyph to latent space
             with torch.no_grad():
-                latents = vae.encode(glyph).latent_dist.sample()
+                # Convert to bfloat16 to match VAE dtype
+                glyph_bf16 = glyph.to(dtype=torch.bfloat16)
+                latents = vae.encode(glyph_bf16).latent_dist.sample()
                 latents = latents * vae.config.scaling_factor
             
             # Sample noise
@@ -160,23 +162,66 @@ def train_one_epoch(
             # Add noise to latents
             noisy_latents = noise_scheduler.add_noise(latents, noise, timesteps)
             
-            # Prepare controlnet conditioning
-            # Concatenate canny and position as control signals
-            controlnet_cond = torch.cat([canny, position], dim=1)  # [B, 6, H, W]
+            # Reshape latents from [B, C, H, W] to [B, H*W, C] for FLUX transformer
+            b, c, h, w = noisy_latents.shape
+            noisy_latents_packed = noisy_latents.permute(0, 2, 3, 1).reshape(b, h * w, c)
             
-            # Encode condition to latent space
+            # Prepare controlnet conditioning
+            # Encode canny to latent space to match dimensions
             with torch.no_grad():
-                controlnet_cond_latent = vae.encode(
-                    controlnet_cond[:, :3]  # Use first 3 channels
-                ).latent_dist.sample()
+                canny_bf16 = canny.to(dtype=torch.bfloat16)
+                controlnet_cond_latent = vae.encode(canny_bf16).latent_dist.sample()
                 controlnet_cond_latent = controlnet_cond_latent * vae.config.scaling_factor
+            
+            # Reshape controlnet condition from [B, C, H, W] to [B, H*W, C]
+            controlnet_cond_packed = controlnet_cond_latent.permute(0, 2, 3, 1).reshape(b, h * w, c)
+            
+            # Create dummy encoder hidden states and pooled projections (since we're not using text)
+            # FLUX expects encoder_hidden_states of shape [B, seq_len, 4096] and pooled_projections of shape [B, 768]
+            dummy_encoder_hidden_states = torch.zeros(
+                (b, 512, 4096), 
+                device=noisy_latents_packed.device, 
+                dtype=noisy_latents_packed.dtype
+            )
+            dummy_pooled_projections = torch.zeros(
+                (b, 768), 
+                device=noisy_latents_packed.device, 
+                dtype=noisy_latents_packed.dtype
+            )
+            # Provide guidance (required when guidance_embeds=True in config)
+            dummy_guidance = torch.ones(
+                (b,),
+                device=noisy_latents_packed.device,
+                dtype=noisy_latents_packed.dtype
+            ) * 3.5  # Default guidance scale
+            
+            # Create position IDs for FLUX (2D format without batch dimension)
+            # img_ids: position IDs for image tokens [H*W, 3] containing (height_idx, width_idx, 0)
+            img_ids = torch.zeros((h * w, 3), device=noisy_latents_packed.device, dtype=noisy_latents_packed.dtype)
+            for y in range(h):
+                for x in range(w):
+                    idx = y * w + x
+                    img_ids[idx, 0] = y  # height index
+                    img_ids[idx, 1] = x  # width index
+                    img_ids[idx, 2] = 0  # depth (always 0 for 2D images)
+            
+            # txt_ids: position IDs for text tokens [seq_len, 3]
+            txt_ids = torch.zeros((512, 3), device=noisy_latents_packed.device, dtype=noisy_latents_packed.dtype)
+            for j in range(512):
+                txt_ids[j, 0] = 0  # row (text is 1D)
+                txt_ids[j, 1] = j  # position in sequence
+                txt_ids[j, 2] = 0  # depth
             
             # Get ControlNet prediction
             down_block_res_samples, mid_block_res_sample = controlnet(
-                hidden_states=noisy_latents,
+                hidden_states=noisy_latents_packed,
                 timestep=timesteps,
-                encoder_hidden_states=None,  # We don't use text encoder for glyph
-controlnet_cond=controlnet_cond_latent,
+                encoder_hidden_states=dummy_encoder_hidden_states,
+                pooled_projections=dummy_pooled_projections,
+                controlnet_cond=controlnet_cond_packed,
+                txt_ids=txt_ids,
+                img_ids=img_ids,
+                guidance=dummy_guidance,
                 return_dict=False
             )
             
@@ -186,30 +231,31 @@ controlnet_cond=controlnet_cond_latent,
             
             # Simplified diffusion loss (MSE between noise and prediction)
             # Note: This is a simplified version. Full implementation would use FLUX transformer
-            target = noise
+            
+            # Reshape target noise to packed format [B, H*W, C]
+            target_packed = noise.permute(0, 2, 3, 1).reshape(b, h * w, c)
             
             # Use mid_block output as prediction (simplified)
             if mid_block_res_sample is not None:
-                # Resize to match target if needed
-                if mid_block_res_sample.shape != target.shape:
-                    mid_block_res_sample = F.interpolate(
-                        mid_block_res_sample,
-                        size=target.shape[-2:],
-                        mode='bilinear',
-                        align_corners=False
-                    )
-                
+                # mid_block_res_sample is already in packed format [B, H*W, C]
                 # Diffusion loss
-                diffusion_loss = F.mse_loss(mid_block_res_sample, target)
+                diffusion_loss = F.mse_loss(mid_block_res_sample, target_packed)
             else:
                 diffusion_loss = torch.tensor(0.0, device=latents.device)
             
             # Text perceptual loss (on decoded images)
             if text_perceptual_loss is not None and config['training']['text_perceptual_loss_weight'] > 0:
                 with torch.no_grad():
-                    # Decode latents to images
-                    pred_latents = noisy_latents - mid_block_res_sample if mid_block_res_sample is not None else noisy_latents
-                    pred_images = vae.decode(pred_latents / vae.config.scaling_factor).sample
+                    # Reshape packed latents back to [B, C, H, W] for VAE decoding
+                    if mid_block_res_sample is not None:
+                        # Reshape prediction from [B, H*W, C] to [B, C, H, W]
+                        pred_packed = noisy_latents_packed - mid_block_res_sample
+                        pred_latents = pred_packed.reshape(b, h, w, c).permute(0, 3, 1, 2)
+                    else:
+                        pred_latents = noisy_latents
+                    
+                    pred_latents_bf16 = pred_latents.to(dtype=torch.bfloat16)
+                    pred_images = vae.decode(pred_latents_bf16 / vae.config.scaling_factor).sample
                 
                 perceptual_loss = text_perceptual_loss(pred_images, text)
             else:
@@ -322,13 +368,29 @@ def main():
     
     # Initialize ControlNet
     logger.info("Initializing ControlNet...")
-    controlnet = FluxControlNetModel.from_pretrained(
-        config['model']['base_model'],
-        subfolder="transformer",
-        **config['model']['controlnet_config']
-    ) if args.resume_from_checkpoint is None else FluxControlNetModel.from_pretrained(
-        args.resume_from_checkpoint
-    )
+    if args.resume_from_checkpoint is None:
+        # Initialize a new ControlNet from scratch
+        from diffusers import FluxTransformer2DModel
+        
+        # Load the base transformer config
+        transformer = FluxTransformer2DModel.from_pretrained(
+            config['model']['base_model'],
+            subfolder="transformer",
+            torch_dtype=torch.bfloat16
+        )
+        
+        # Initialize ControlNet with same config as transformer
+        controlnet = FluxControlNetModel.from_config(
+            transformer.config,
+            **config['model']['controlnet_config']
+        )
+        
+        del transformer  # Free memory
+    else:
+        # Resume from checkpoint
+        controlnet = FluxControlNetModel.from_pretrained(
+            args.resume_from_checkpoint
+        )
     
     # Initialize noise scheduler
     noise_scheduler = DDPMScheduler.from_pretrained(

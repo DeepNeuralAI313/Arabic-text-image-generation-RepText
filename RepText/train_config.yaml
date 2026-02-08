@@ -3,9 +3,9 @@
 # Data
 data:
   data_dir: "./arabic_training_data"  # Directory with prepared samples
-  image_size: [1024, 1024]  # [width, height]
+  image_size: [512, 512]  # [width, height] - reduced for memory
   train_ratio: 0.9
-  batch_size: 4
+  batch_size: 1  # Reduced from 4 due to memory constraints
   num_workers: 4
 
 # Model
@@ -13,7 +13,7 @@ model:
   base_model: "black-forest-labs/FLUX.1-dev"
   controlnet_config:
     in_channels: 16
-    num_layers: 4
+    num_layers: 2  # Reduced from 4 for memory
     attention_head_dim: 128
     
 # Training
@@ -37,8 +37,8 @@ training:
   # Mixed precision
   mixed_precision: "bf16"  # "no", "fp16", "bf16"
   
-  # Gradient accumulation
-  gradient_accumulation_steps: 1
+  # Gradient accumulation (increased to maintain effective batch size of 4)
+  gradient_accumulation_steps: 4
   
   # Checkpointing
   save_steps: 1000
