@@ -424,7 +424,6 @@ def main():
         logger.info(f"Loading pretrained ControlNet: {pretrained_controlnet}")
         controlnet = FluxControlNetModel.from_pretrained(
             pretrained_controlnet,
-            subfolder="controlnet",
             torch_dtype=torch.bfloat16
         )
         try:

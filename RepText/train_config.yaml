@@ -23,7 +23,7 @@ model:
     
 # Training
 training:
-  num_epochs: 1
+  num_epochs: 10
   learning_rate: 1.0e-5
   adam_beta1: 0.9
   adam_beta2: 0.999
