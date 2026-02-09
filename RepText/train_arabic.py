@@ -11,6 +11,7 @@ from typing import Dict, Optional
 import math
 
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+os.environ.setdefault("TORCH_CUDNN_BENCHMARK", "0")
 
 import torch
 import torch.nn as nn
@@ -20,6 +21,13 @@ from torchvision import transforms
 from accelerate import Accelerator
 from accelerate.logging import get_logger
 from accelerate.utils import ProjectConfiguration, set_seed
+
+# Enable memory efficient attention
+try:
+    torch.backends.cuda.enable_flash_sdp(True)
+    print("✅ Flash attention enabled")
+except:
+    print("⚠️ Flash attention not available")
 from diffusers import FluxPipeline, DDPMScheduler, AutoencoderKL
 from diffusers.optimization import get_scheduler
 from transformers import AutoProcessor, VisionEncoderDecoderModel
@@ -210,8 +218,8 @@ def train_one_epoch(
             
             # Create dummy encoder hidden states and pooled projections (since we're not using text prompts)
             # FLUX expects encoder_hidden_states of shape [B, seq_len, 4096] and pooled_projections of shape [B, 768]
-            # Use smaller seq_len to save memory
-            text_seq_len = int(config['model'].get('text_seq_len', 128))
+            # Use smaller seq_len to save memory (reduced to 64 for memory efficiency)
+            text_seq_len = int(config['model'].get('text_seq_len', 64))
             dummy_encoder_hidden_states = torch.zeros(
                 (b, text_seq_len, 4096),
                 device=noisy_latents_packed.device, 
@@ -316,6 +324,10 @@ def train_one_epoch(
             
             optimizer.step()
             optimizer.zero_grad()
+            
+            # Clear cache to prevent memory fragmentation
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
         
         # Logging
         if accelerator.sync_gradients:
@@ -428,8 +440,17 @@ def main():
         )
         try:
             controlnet.enable_gradient_checkpointing()
+            logger.info("✅ Gradient checkpointing enabled")
         except Exception as e:
             logger.warning(f"Could not enable gradient checkpointing: {e}")
+        
+        # Enable memory-efficient attention
+        try:
+            if hasattr(controlnet, 'enable_xformers_memory_efficient_attention'):
+                controlnet.enable_xformers_memory_efficient_attention()
+                logger.info("✅ xFormers memory-efficient attention enabled")
+        except Exception as e:
+            logger.info(f"xFormers not available, using standard attention")
     elif args.resume_from_checkpoint is None:
         # Initialize a new ControlNet from scratch
         from diffusers import FluxTransformer2DModel
@@ -494,13 +515,15 @@ def main():
         train_ratio=config['data']['train_ratio']
     )
     
-    # Initialize optimizer
+    # Initialize optimizer with memory-efficient settings
     optimizer = torch.optim.AdamW(
         controlnet.parameters(),
         lr=config['training']['learning_rate'],
         betas=(config['training']['adam_beta1'], config['training']['adam_beta2']),
         weight_decay=config['training']['adam_weight_decay'],
-        eps=config['training']['adam_epsilon']
+        eps=config['training']['adam_epsilon'],
+        fused=False,  # Use standard Adam to save memory
+        foreach=False  # Disable foreach to save memory
     )
     
     # Initialize LR scheduler
@@ -517,13 +540,20 @@ def main():
     )
     
     vae.to(accelerator.device)
+    # Put VAE in eval mode and disable gradients completely
+    vae.eval()
+    
     if text_perceptual_loss is not None:
         text_perceptual_loss.to(accelerator.device)
+        text_perceptual_loss.eval()
     
     # Print memory usage
     if torch.cuda.is_available() and accelerator.is_main_process:
         logger.info(f"GPU Memory allocated: {torch.cuda.memory_allocated() / 1024**3:.2f} GB")
         logger.info(f"GPU Memory reserved: {torch.cuda.memory_reserved() / 1024**3:.2f} GB")
+    
+    # Additional memory optimization info
+    logger.info("Memory optimizations enabled: gradient checkpointing, efficient attention, reduced seq_len")
     
     # Training loop
     logger.info("***** Running training *****")

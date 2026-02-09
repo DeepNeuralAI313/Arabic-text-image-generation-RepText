@@ -12,7 +12,7 @@ data:
 model:
   base_model: "black-forest-labs/FLUX.1-dev"
   pretrained_controlnet: "Shakker-Labs/RepText"
-  text_seq_len: 128
+  text_seq_len: 64
   controlnet_config:
     in_channels: 64
     extra_condition_channels: 64
@@ -43,8 +43,8 @@ training:
   # Mixed precision
   mixed_precision: "bf16"
   
-  # Gradient accumulation
-  gradient_accumulation_steps: 4
+  # Gradient accumulation (reduced to 2 to save memory during optimizer step)
+  gradient_accumulation_steps: 2
   
   # Checkpointing
   save_steps: 1000
