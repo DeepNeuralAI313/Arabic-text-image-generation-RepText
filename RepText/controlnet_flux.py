@@ -24,9 +24,9 @@ from diffusers.models.attention_processor import AttentionProcessor
 from diffusers.models.modeling_utils import ModelMixin
 from diffusers.utils import USE_PEFT_BACKEND, BaseOutput, is_torch_version, logging, scale_lora_layers, unscale_lora_layers
 from diffusers.models.controlnets.controlnet import zero_module
-from diffusers.models.embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings, FluxPosEmbed
+from diffusers.models.embeddings import CombinedTimestepGuidanceTextProjEmbeddings, CombinedTimestepTextProjEmbeddings
 from diffusers.models.modeling_outputs import Transformer2DModelOutput
-from diffusers.models.transformers.transformer_flux import FluxSingleTransformerBlock, FluxTransformerBlock
+from diffusers.models.transformers.transformer_flux import FluxPosEmbed, FluxSingleTransformerBlock, FluxTransformerBlock
 
 
 logger = logging.get_logger(__name__)  # pylint: disable=invalid-name
@@ -175,9 +175,24 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
         for name, module in self.named_children():
             fn_recursive_attn_processor(name, module, processor)
 
-    def _set_gradient_checkpointing(self, module, value=False):
-        if hasattr(module, "gradient_checkpointing"):
-            module.gradient_checkpointing = value
+    def _set_gradient_checkpointing(self, enable=True, gradient_checkpointing_func=None):
+        """
+        Enable or disable gradient checkpointing for the model.
+        
+        Args:
+            enable (bool): Whether to enable gradient checkpointing
+            gradient_checkpointing_func: Custom gradient checkpointing function (not used)
+        """
+        self.gradient_checkpointing = enable
+        
+        # Also set it on transformer blocks
+        for block in self.transformer_blocks:
+            if hasattr(block, "gradient_checkpointing"):
+                block.gradient_checkpointing = enable
+        
+        for block in self.single_transformer_blocks:
+            if hasattr(block, "gradient_checkpointing"):
+                block.gradient_checkpointing = enable
 
     @classmethod
     def from_transformer(
@@ -348,7 +363,7 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                 )
             block_samples = block_samples + (hidden_states,)
 
-        hidden_states = torch.cat([encoder_hidden_states, hidden_states], dim=1)
+        # Keep encoder_hidden_states and hidden_states separate for single transformer blocks
 
         single_block_samples = ()
         for index_block, block in enumerate(self.single_transformer_blocks):
@@ -364,21 +379,23 @@ class FluxControlNetModel(ModelMixin, ConfigMixin, PeftAdapterMixin):
                     return custom_forward
 
                 ckpt_kwargs: Dict[str, Any] = {"use_reentrant": False} if is_torch_version(">=", "1.11.0") else {}
-                hidden_states = torch.utils.checkpoint.checkpoint(
+                encoder_hidden_states, hidden_states = torch.utils.checkpoint.checkpoint(
                     create_custom_forward(block),
                     hidden_states,
+                    encoder_hidden_states,
                     temb,
                     image_rotary_emb,
                     **ckpt_kwargs,
                 )
 
             else:
-                hidden_states = block(
+                encoder_hidden_states, hidden_states = block(
                     hidden_states=hidden_states,
+                    encoder_hidden_states=encoder_hidden_states,
                     temb=temb,
                     image_rotary_emb=image_rotary_emb,
                 )
-            single_block_samples = single_block_samples + (hidden_states[:, encoder_hidden_states.shape[1] :],)
+            single_block_samples = single_block_samples + (hidden_states,)
 
         # controlnet block
         controlnet_block_samples = ()

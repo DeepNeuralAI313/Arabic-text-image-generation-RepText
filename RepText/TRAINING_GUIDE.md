@@ -69,7 +69,7 @@ If you don't provide this file, the script will generate random Arabic text.
 
 ### 4. Configure Training
 
-Edit `train_config.yaml` to adjust training parameters:
+Edit `train_config.yaml` to adjust training parameters (this is the only config file now):
 
 ```yaml
 # Data
@@ -99,6 +99,12 @@ For single GPU, use these settings:
 - Number of processes: 1
 - Use FP16 precision: No
 - Use BF16 precision: Yes (if supported)
+
+For 2 GPUs, use these settings:
+- Compute environment: This machine
+- Number of processes: 2
+- Mixed precision: BF16
+- Use DeepSpeed: No
 
 ### 6. Run Training
 
