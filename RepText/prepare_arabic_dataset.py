@@ -14,6 +14,28 @@ import cv2
 from tqdm import tqdm
 import argparse
 
+_ARABIC_SHAPING_AVAILABLE = None
+
+
+def shape_arabic_text(text: str) -> str:
+    """Shape Arabic text for correct RTL display and ligatures."""
+    global _ARABIC_SHAPING_AVAILABLE
+    try:
+        import arabic_reshaper
+        from bidi.algorithm import get_display
+    except Exception:
+        if _ARABIC_SHAPING_AVAILABLE is None:
+            print(
+                "Warning: arabic_reshaper/python-bidi not installed. "
+                "Arabic shaping will be skipped."
+            )
+            _ARABIC_SHAPING_AVAILABLE = False
+        return text
+
+    _ARABIC_SHAPING_AVAILABLE = True
+    reshaped = arabic_reshaper.reshape(text)
+    return get_display(reshaped)
+
 
 def get_arabic_fonts(font_dir: str) -> List[str]:
     """Get list of Arabic-compatible font files."""
@@ -45,9 +67,21 @@ def generate_random_arabic_text(min_words: int = 1, max_words: int = 5) -> str:
         "يوم", "ليلة", "صباح", "مساء", "وقت", "ساعة", "دقيقة", "ثانية",
         "طعام", "ماء", "خبز", "لحم", "فواكه", "خضروات", "قهوة", "شاي"
     ]
-    
+
+    arabic_digits = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"]
+    arabic_punct = ["،", "؛", "؟"]
+
     num_words = random.randint(min_words, max_words)
-    return " ".join(random.choices(arabic_words, k=num_words))
+    words = random.choices(arabic_words, k=num_words)
+
+    if random.random() < 0.25:
+        words.append("".join(random.choices(arabic_digits, k=random.randint(2, 5))))
+
+    text = " ".join(words)
+    if random.random() < 0.3:
+        text += random.choice(arabic_punct)
+
+    return text
 
 
 def canny_edge(img: np.ndarray) -> np.ndarray:
@@ -62,6 +96,7 @@ def canny_edge(img: np.ndarray) -> np.ndarray:
 
 def create_glyph_image(
     text: str,
+    shaped_text: str,
     font: ImageFont.FreeTypeFont,
     width: int,
     height: int,
@@ -80,11 +115,11 @@ def create_glyph_image(
     glyph_img = Image.new('RGB', (width, height), color=(0, 0, 0))
     draw = ImageDraw.Draw(glyph_img)
     
-    # Draw text - Arabic is RTL, PIL handles it
-    draw.text(position, text, font=font, fill=color)
+    # Draw text - use shaped text for correct Arabic rendering
+    draw.text(position, shaped_text, font=font, fill=color)
     
     # Get text bounding box
-    bbox = draw.textbbox(position, text, font=font)
+    bbox = draw.textbbox(position, shaped_text, font=font)
     
     # Create position map (heatmap around text)
     position_img = Image.new('L', (width, height), 0)
@@ -140,22 +175,41 @@ def prepare_training_sample(
     Returns:
         Dictionary containing glyph, position, mask, canny edge, and metadata
     """
-    # Load font
-    font = ImageFont.truetype(font_path, font_size)
-    
-    # Random position for text (avoid edges)
-    margin = 100
-    position = (
-        random.randint(margin, width - margin - 200),
-        random.randint(margin, height - margin - 100)
-    )
+    # Load font and shape text
+    shaped_text = shape_arabic_text(text)
+
+    # Fit text into the canvas by shrinking if needed
+    margin = max(20, int(min(width, height) * 0.05))
+    font = None
+    position = None
+    for _ in range(5):
+        font = ImageFont.truetype(font_path, font_size)
+        tmp_img = Image.new('RGB', (width, height), color=(0, 0, 0))
+        tmp_draw = ImageDraw.Draw(tmp_img)
+        bbox = tmp_draw.textbbox((0, 0), shaped_text, font=font)
+        text_w = bbox[2] - bbox[0]
+        text_h = bbox[3] - bbox[1]
+
+        max_x = width - margin - text_w
+        max_y = height - margin - text_h
+        if max_x > margin and max_y > margin:
+            position = (
+                random.randint(margin, max_x),
+                random.randint(margin, max_y)
+            )
+            break
+
+        font_size = max(int(font_size * 0.9), 12)
+
+    if font is None or position is None:
+        raise ValueError("Text too large for the image size")
     
     # Random color
     color = tuple(random.randint(200, 255) for _ in range(3))
     
     # Create glyph, position, and mask
     glyph, position_map, mask = create_glyph_image(
-        text, font, width, height, position, color
+        text, shaped_text, font, width, height, position, color
     )
     
     # Create canny edge from glyph

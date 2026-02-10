@@ -190,19 +190,19 @@ def train_one_epoch(
             noisy_latents_packed = _pack_latents(noisy_latents, b, c, h, w)
             
             # Prepare controlnet conditioning
-            # Match inference: concatenate glyph + position latents before packing
+            # Match inference: concatenate canny + position latents before packing
             with torch.no_grad():
-                glyph_cond_bf16 = glyph.to(dtype=torch.bfloat16)
+                canny_cond_bf16 = canny.to(dtype=torch.bfloat16)
                 position_cond_bf16 = position.to(dtype=torch.bfloat16)
 
-                glyph_cond_latent = vae.encode(glyph_cond_bf16).latent_dist.sample()
-                glyph_cond_latent = glyph_cond_latent * vae.config.scaling_factor
+                canny_cond_latent = vae.encode(canny_cond_bf16).latent_dist.sample()
+                canny_cond_latent = canny_cond_latent * vae.config.scaling_factor
 
                 position_cond_latent = vae.encode(position_cond_bf16).latent_dist.sample()
                 position_cond_latent = position_cond_latent * vae.config.scaling_factor
 
                 controlnet_cond_latent = torch.cat(
-                    [glyph_cond_latent, position_cond_latent],
+                    [canny_cond_latent, position_cond_latent],
                     dim=1,
                 )
 

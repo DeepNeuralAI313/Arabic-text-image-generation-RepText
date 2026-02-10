@@ -27,3 +27,5 @@ wandb
 torchvision
 datasets
 bitsandbytes  # For 8-bit optimizers (optional)
+arabic-reshaper
+python-bidi

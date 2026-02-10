@@ -3,7 +3,7 @@
 # Data
 data:
   data_dir: "./arabic_training_data"
-  image_size: [512, 512]
+  image_size: [1024, 1024]
   train_ratio: 0.9
   batch_size: 1
   num_workers: 4
@@ -12,6 +12,8 @@ data:
 model:
   base_model: "black-forest-labs/FLUX.1-dev"
   pretrained_controlnet: "Shakker-Labs/RepText"
+  # To resume training from checkpoint, uncomment and edit the line below:
+  # pretrained_controlnet: "./output/arabic_reptext/checkpoint"
   text_seq_len: 64
   controlnet_config:
     in_channels: 64
@@ -23,8 +25,8 @@ model:
     
 # Training
 training:
-  num_epochs: 10
-  learning_rate: 1.0e-5
+  num_epochs: 30
+  learning_rate: 5.0e-6
   adam_beta1: 0.9
   adam_beta2: 0.999
   adam_weight_decay: 1.0e-2
@@ -33,8 +35,8 @@ training:
   
   # Loss weights
   diffusion_loss_weight: 1.0
-  text_perceptual_loss_weight: 0.0
-  use_reconstruction_loss: false
+  text_perceptual_loss_weight: 1.0
+  use_reconstruction_loss: true
   
   # Learning rate schedule
   lr_scheduler: "constant_with_warmup"
@@ -44,7 +46,7 @@ training:
   mixed_precision: "bf16"
   
   # Gradient accumulation (reduced to 2 to save memory during optimizer step)
-  gradient_accumulation_steps: 2
+  gradient_accumulation_steps: 4
   
   # Checkpointing
   save_steps: 1000
