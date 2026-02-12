@@ -8,6 +8,7 @@ import json
 import random
 from pathlib import Path
 from typing import List, Dict, Tuple
+from masking_utils import create_contour_mask
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 import cv2
@@ -138,25 +139,13 @@ def create_glyph_image(
             fill=intensity
         )
     
-    # Create binary mask
-    mask_img = Image.new('L', (width, height), 0)
-    mask_draw = ImageDraw.Draw(mask_img)
-    
-    # Expand bbox slightly for mask
-    padding = 10
-    mask_bbox = [
-        max(0, bbox[0] - padding),
-        max(0, bbox[1] - padding),
-        min(width, bbox[2] + padding),
-        min(height, bbox[3] + padding)
-    ]
-    mask_draw.rectangle(mask_bbox, fill=255)
-    
     # Convert to numpy arrays
     glyph = np.array(glyph_img)
     position = np.array(position_img)
     position = cv2.cvtColor(position, cv2.COLOR_GRAY2RGB)
-    mask = np.array(mask_img)
+
+    # Create contour-based binary mask (tighter than rectangular bbox)
+    mask = create_contour_mask(glyph, padding=3)
     
     return glyph, position, mask
 

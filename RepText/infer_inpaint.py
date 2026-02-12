@@ -8,6 +8,7 @@ import numpy as np
 import cv2
 import re
 import os
+from masking_utils import create_contour_mask, create_contour_position, create_mask
 
 # --- Arabic text shaping (required for correct rendering) ---
 try:
@@ -117,6 +118,10 @@ if __name__ == "__main__":
     ## Set to 0.0 to disable glyph latent replication entirely (for debugging)
     glyph_latent_weight = 0.10  # experiment with: 0.0, 0.05, 0.10, 0.50, 0.90
 
+    ## --- Mask Mode ---
+    mask_mode = "contour"  # "contour" or "bbox"
+    mask_padding = 3
+
     ## set controlnet conditions
     control_image_list = []  # canny list
     control_position_list = []  # position list
@@ -134,28 +139,32 @@ if __name__ == "__main__":
         draw = ImageDraw.Draw(control_image_glyph)
         draw.text(text_position, display_text, font=font, fill=text_color)
 
-        ### get bbox
+        glyph_np = np.array(control_image_glyph)
         bbox = draw.textbbox(text_position, display_text, font=font)
 
-        ### position condition
-        control_position = np.zeros([height, width], dtype=np.uint8)
-        control_position[bbox[1]-5:bbox[3]+5, bbox[0]-5:bbox[2]+5] = 255
-        control_position = Image.fromarray(control_position.astype(np.uint8))
+        ### position condition -- contour-based or bbox-based
+        if mask_mode == "contour":
+            pos_np = create_contour_position(glyph_np, padding=mask_padding)
+        else:
+            pos_np = np.zeros([height, width], dtype=np.uint8)
+            pos_np[bbox[1]-3:bbox[3]+3, bbox[0]-3:bbox[2]+3] = 255
+        control_position = Image.fromarray(pos_np)
         control_position_list.append(control_position)
 
-        ### regional mask -- tight bbox with small padding
-        control_mask_np = np.zeros([height, width], dtype=np.uint8)
-        control_mask_np[bbox[1]-5:bbox[3]+5, bbox[0]-5:bbox[2]+5] = 255
-        control_mask = Image.fromarray(control_mask_np.astype(np.uint8))
+        ### regional mask -- contour-based or bbox-based
+        mask_np = create_mask(
+            glyph_np, bbox, width, height,
+            mode=mask_mode, padding=mask_padding
+        )
+        control_mask = Image.fromarray(mask_np)
         control_mask_list.append(control_mask)
 
         ### accumulate glyph
-        control_glyph = np.array(control_image_glyph)
-        control_glyph_all += control_glyph
+        control_glyph_all += glyph_np
 
         ### canny condition -- with edge dilation for thicker lines
         control_image = canny(
-            cv2.cvtColor(np.array(control_image_glyph), cv2.COLOR_RGB2BGR),
+            cv2.cvtColor(glyph_np, cv2.COLOR_RGB2BGR),
             dilate_edges=True,
             dilation_kernel_size=3
         )
