@@ -31,6 +31,7 @@ def download_google_font(font_name: str, output_dir: str):
     """
     # Direct download links for popular Arabic fonts
     font_urls = {
+        # Regular variants
         "Amiri": "https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Regular.ttf",
         "Cairo": "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-Regular.ttf",
         "Tajawal": "https://github.com/google/fonts/raw/main/ofl/tajawal/Tajawal-Regular.ttf",
@@ -41,6 +42,16 @@ def download_google_font(font_name: str, output_dir: str):
         "Reem Kufi": "https://github.com/google/fonts/raw/main/ofl/reemkufi/ReemKufi-Regular.ttf",
         "Scheherazade": "https://github.com/google/fonts/raw/main/ofl/scheherazadenew/ScheherazadeNew-Regular.ttf",
         "Harmattan": "https://github.com/google/fonts/raw/main/ofl/harmattan/Harmattan-Regular.ttf",
+        # Bold variants -- thicker strokes create stronger canny edges for Arabic
+        "Amiri Bold": "https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-Bold.ttf",
+        "Cairo Bold": "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-Bold.ttf",
+        "Tajawal Bold": "https://github.com/google/fonts/raw/main/ofl/tajawal/Tajawal-Bold.ttf",
+        "Almarai Bold": "https://github.com/google/fonts/raw/main/ofl/almarai/Almarai-Bold.ttf",
+        "Changa Bold": "https://github.com/google/fonts/raw/main/ofl/changa/Changa-Bold.ttf",
+        "Amiri-BoldSlanted": "https://github.com/google/fonts/raw/main/ofl/amiri/Amiri-BoldItalic.ttf",
+        "Cairo ExtraBold": "https://github.com/google/fonts/raw/main/ofl/cairo/Cairo-ExtraBold.ttf",
+        "Tajawal ExtraBold": "https://github.com/google/fonts/raw/main/ofl/tajawal/Tajawal-ExtraBold.ttf",
+        "Almarai ExtraBold": "https://github.com/google/fonts/raw/main/ofl/almarai/Almarai-ExtraBold.ttf",
     }
     
     if font_name not in font_urls:
@@ -79,8 +90,9 @@ def main():
     
     # List of recommended fonts
     recommended_fonts = [
+        # Regular
         "Amiri",
-        "Cairo", 
+        "Cairo",
         "Tajawal",
         "Almarai",
         "Changa",
@@ -88,7 +100,18 @@ def main():
         "Markazi",
         "Reem Kufi",
         "Scheherazade",
-        "Harmattan"
+        "Harmattan",
+        # Bold -- thicker strokes for better Arabic canny edges
+        "Amiri Bold",
+        "Cairo Bold",
+        "Tajawal Bold",
+        "Almarai Bold",
+        "Changa Bold",
+        "Amiri-BoldSlanted",
+        # ExtraBold -- maximum thickness
+        "Cairo ExtraBold",
+        "Tajawal ExtraBold",
+        "Almarai ExtraBold",
     ]
     
     print(f"Downloading {len(recommended_fonts)} Arabic fonts to '{output_dir}/'...")
