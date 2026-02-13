@@ -1,0 +1,64 @@
+# RepText Arabic Training Configuration for EvArEST Dataset
+# Fine-tunes ControlNet with proper denoising loss using full FLUX transformer
+
+# Data
+data:
+  data_dir: "./evarest_training_data"
+  image_size: [512, 512]
+  train_ratio: 0.9
+  batch_size: 1
+  num_workers: 2
+
+# Model
+model:
+  base_model: "black-forest-labs/FLUX.1-dev"
+  pretrained_controlnet: "Shakker-Labs/RepText"
+  # To resume from a checkpoint, uncomment:
+  # pretrained_controlnet: "./output/arabic_evarest/checkpoint-XXXX"
+  text_seq_len: 64
+  load_transformer: true       # Load FLUX transformer for proper denoising loss
+  load_text_encoders: true     # Use real CLIP+T5 text embeddings (not dummy zeros)
+
+# Training
+training:
+  num_epochs: 50
+  learning_rate: 1.0e-5
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_weight_decay: 1.0e-2
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+
+  # Loss weights
+  diffusion_loss_weight: 1.0
+  text_perceptual_loss_weight: 0.1
+
+  # Learning rate schedule
+  lr_scheduler: "constant_with_warmup"
+  lr_warmup_steps: 200
+
+  # Mixed precision
+  mixed_precision: "bf16"
+
+  # Gradient accumulation (effective batch = batch_size * grad_accum)
+  gradient_accumulation_steps: 8
+
+  # Memory optimizations
+  use_cpu_offload: true         # Offload VAE/text encoders after each batch
+  gradient_checkpointing: true
+
+  # Checkpointing
+  save_steps: 500
+  eval_steps: 250
+  logging_steps: 25
+
+# Output
+output:
+  output_dir: "./output/arabic_evarest"
+  logging_dir: "./output/arabic_evarest/logs"
+
+# OCR Model for Text Perceptual Loss
+ocr:
+  use_ocr_loss: true
+  backend: "easyocr"            # easyocr supports Arabic natively
+  ocr_loss_weight: 0.1

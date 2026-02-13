@@ -616,6 +616,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         device,
         generator,
         latents=None,
+        glyph_latent_weight=0.10,
     ):
         height = 2 * (int(height) // self.vae_scale_factor)
         width = 2 * (int(width) // self.vae_scale_factor)
@@ -650,10 +651,10 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
 
         glyph_mask = glyph_mask > 0
         result = torch.zeros_like(noise)
-        result[glyph_mask] = 0.10 * image_latents[glyph_mask] + 1.0 * noise[glyph_mask]
+        result[glyph_mask] = glyph_latent_weight * image_latents[glyph_mask] + (1.0 - glyph_latent_weight) * noise[glyph_mask]
         result[~glyph_mask] = noise[~glyph_mask]
 
-        latents = self._pack_latents(noise, batch_size, num_channels_latents, height, width)
+        latents = self._pack_latents(result, batch_size, num_channels_latents, height, width)
 
         latent_image_ids = self._prepare_latent_image_ids(batch_size, height, width, device, dtype)
 
@@ -778,6 +779,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
         control_mask: Optional[torch.FloatTensor] = None,
         control_position: Optional[torch.FloatTensor] = None,
         control_glyph: Optional[torch.FloatTensor] = None,
+        glyph_latent_weight: float = 0.10,
     ):
         r"""
         Function invoked when calling the pipeline for generation.
@@ -979,6 +981,7 @@ class FluxControlNetPipeline(DiffusionPipeline, FluxLoraLoaderMixin, FromSingleF
                 device,
                 generator,
                 None,
+                glyph_latent_weight=glyph_latent_weight,
             )
         else:
             latents, latent_image_ids = self.prepare_latents(

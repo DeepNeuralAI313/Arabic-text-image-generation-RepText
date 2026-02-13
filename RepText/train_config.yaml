@@ -1,0 +1,65 @@
+# RepText Arabic Training Configuration (Single Source of Truth)
+
+# Data
+data:
+  data_dir: "./arabic_training_data"
+  image_size: [1024, 1024]
+  train_ratio: 0.9
+  batch_size: 1
+  num_workers: 4
+
+# Model
+model:
+  base_model: "black-forest-labs/FLUX.1-dev"
+  pretrained_controlnet: "Shakker-Labs/RepText"
+  # To resume training from checkpoint, uncomment and edit the line below:
+  # pretrained_controlnet: "./output/arabic_reptext/checkpoint"
+  text_seq_len: 64
+  controlnet_config:
+    in_channels: 64
+    extra_condition_channels: 64
+    num_layers: 2
+    num_single_layers: 4
+    attention_head_dim: 128
+    num_attention_heads: 24
+    
+# Training
+training:
+  num_epochs: 30
+  learning_rate: 5.0e-6
+  adam_beta1: 0.9
+  adam_beta2: 0.999
+  adam_weight_decay: 1.0e-2
+  adam_epsilon: 1.0e-8
+  max_grad_norm: 1.0
+  
+  # Loss weights
+  diffusion_loss_weight: 1.0
+  text_perceptual_loss_weight: 1.0
+  use_reconstruction_loss: true
+  
+  # Learning rate schedule
+  lr_scheduler: "constant_with_warmup"
+  lr_warmup_steps: 500
+  
+  # Mixed precision
+  mixed_precision: "bf16"
+  
+  # Gradient accumulation (reduced to 2 to save memory during optimizer step)
+  gradient_accumulation_steps: 4
+  
+  # Checkpointing
+  save_steps: 1000
+  eval_steps: 500
+  logging_steps: 50
+  
+# Output
+output:
+  output_dir: "./output/arabic_reptext"
+  logging_dir: "./output/arabic_reptext/logs"
+  
+# OCR Model for Text Perceptual Loss
+ocr:
+  model_name: "microsoft/trocr-base-printed"
+  use_ocr_loss: false
+
