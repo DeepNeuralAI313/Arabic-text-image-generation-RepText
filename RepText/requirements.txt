@@ -29,3 +29,5 @@ datasets
 bitsandbytes  # For 8-bit optimizers (optional)
 arabic-reshaper
 python-bidi
+easyocr         # Arabic OCR for text perceptual loss (Phase 3)
+gdown           # Download EvArEST dataset from Google Drive
